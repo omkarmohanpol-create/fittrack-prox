@@ -1,0 +1,75 @@
+import '../models/models.dart';
+
+/// Built-in exercises offered when logging a strength workout. Muscle groups
+/// match AppConstants.muscleGroups. Users can add their own on top.
+const List<ExerciseDef> builtInExercises = [
+  // Chest
+  ExerciseDef('Bench press', 'Chest'),
+  ExerciseDef('Incline bench press', 'Chest'),
+  ExerciseDef('Dumbbell bench press', 'Chest'),
+  ExerciseDef('Incline dumbbell press', 'Chest'),
+  ExerciseDef('Chest fly', 'Chest'),
+  ExerciseDef('Cable crossover', 'Chest'),
+  ExerciseDef('Push-up', 'Chest'),
+  ExerciseDef('Dip', 'Chest'),
+  // Back
+  ExerciseDef('Deadlift', 'Back'),
+  ExerciseDef('Pull-up', 'Back'),
+  ExerciseDef('Chin-up', 'Back'),
+  ExerciseDef('Lat pulldown', 'Back'),
+  ExerciseDef('Barbell row', 'Back'),
+  ExerciseDef('Dumbbell row', 'Back'),
+  ExerciseDef('Seated cable row', 'Back'),
+  ExerciseDef('T-bar row', 'Back'),
+  ExerciseDef('Face pull', 'Back'),
+  // Shoulders
+  ExerciseDef('Overhead press', 'Shoulders'),
+  ExerciseDef('Dumbbell shoulder press', 'Shoulders'),
+  ExerciseDef('Arnold press', 'Shoulders'),
+  ExerciseDef('Lateral raise', 'Shoulders'),
+  ExerciseDef('Front raise', 'Shoulders'),
+  ExerciseDef('Rear delt fly', 'Shoulders'),
+  ExerciseDef('Upright row', 'Shoulders'),
+  ExerciseDef('Shrug', 'Shoulders'),
+  // Arms
+  ExerciseDef('Barbell curl', 'Arms'),
+  ExerciseDef('Dumbbell curl', 'Arms'),
+  ExerciseDef('Hammer curl', 'Arms'),
+  ExerciseDef('Preacher curl', 'Arms'),
+  ExerciseDef('Triceps pushdown', 'Arms'),
+  ExerciseDef('Skull crusher', 'Arms'),
+  ExerciseDef('Overhead triceps extension', 'Arms'),
+  ExerciseDef('Close-grip bench press', 'Arms'),
+  // Legs
+  ExerciseDef('Back squat', 'Legs'),
+  ExerciseDef('Front squat', 'Legs'),
+  ExerciseDef('Leg press', 'Legs'),
+  ExerciseDef('Romanian deadlift', 'Legs'),
+  ExerciseDef('Lunge', 'Legs'),
+  ExerciseDef('Bulgarian split squat', 'Legs'),
+  ExerciseDef('Leg extension', 'Legs'),
+  ExerciseDef('Leg curl', 'Legs'),
+  ExerciseDef('Hip thrust', 'Legs'),
+  ExerciseDef('Calf raise', 'Legs'),
+  ExerciseDef('Goblet squat', 'Legs'),
+  // Core
+  ExerciseDef('Plank', 'Core'),
+  ExerciseDef('Crunch', 'Core'),
+  ExerciseDef('Hanging leg raise', 'Core'),
+  ExerciseDef('Russian twist', 'Core'),
+  ExerciseDef('Cable crunch', 'Core'),
+  ExerciseDef('Ab wheel rollout', 'Core'),
+  ExerciseDef('Dead bug', 'Core'),
+  // Full body
+  ExerciseDef('Clean and press', 'Full body'),
+  ExerciseDef('Kettlebell swing', 'Full body'),
+  ExerciseDef('Burpee', 'Full body'),
+  ExerciseDef('Thruster', 'Full body'),
+  ExerciseDef("Farmer's carry", 'Full body'),
+  // Cardio
+  ExerciseDef('Treadmill run', 'Cardio'),
+  ExerciseDef('Rowing machine', 'Cardio'),
+  ExerciseDef('Stationary bike', 'Cardio'),
+  ExerciseDef('Jump rope', 'Cardio'),
+  ExerciseDef('Stair climber', 'Cardio'),
+];
