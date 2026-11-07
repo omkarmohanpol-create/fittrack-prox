@@ -1,0 +1,199 @@
+# FitTrack Pro CI. android/ and ios/ are not checked in: each job generates
+# them with `flutter create`, then applies tool/patch_android.py or
+# tool/patch_ios.py. Jobs:
+#   android   analyze, test, debug APK; signed release AAB when the keystore
+#             secrets are set (docs/DEPLOYMENT.md)
+#   database  supabase/schema.sql + behaviour tests on PostgreSQL
+#   functions type-checks the delete-account Edge Function
+#   ios       unsigned iOS build, manual runs only
+name: build
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+    inputs:
+      build_ios:
+        description: "Also build iOS (no codesign, uses a macOS runner)"
+        type: boolean
+        default: false
+
+env:
+  # Pinned to the version the README targets. 3.27+ would turn the
+  # Color.withOpacity uses into deprecation infos (not errors) and makes
+  # `flutter create` emit build.gradle.kts, which tool/patch_android.py rejects.
+  FLUTTER_VERSION: "3.24.5"
+
+jobs:
+  android:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: true
+
+      - name: Generate platform folders
+        run: |
+          flutter create . --platforms=android,ios --org com.fittrack --project-name fittrack_pro
+          # flutter create adds a counter-app test/widget_test.dart (and can add
+          # lib/main.dart if missing). Drop anything it added under lib/ and test/
+          # and restore our tracked files.
+          git clean -fd lib test
+          git checkout -- lib test pubspec.yaml analysis_options.yaml
+          # pubspec lists assets/images/; the build fails if the folder is missing.
+          mkdir -p assets/images
+
+      - name: Android config (desugaring, notification permissions, receivers)
+        run: python3 tool/patch_android.py
+
+      - run: flutter pub get
+
+      - name: Analyze
+        # Infos (deprecations noted in docs/MEMORY.md) don't fail the build;
+        # warnings and errors do.
+        run: flutter analyze --no-fatal-infos
+
+      - name: Test
+        run: flutter test
+
+      - name: Build debug APK
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+        run: |
+          # Without the two secrets the app is built in guest-only mode.
+          ARGS=()
+          if [ -n "$SUPABASE_URL" ] && [ -n "$SUPABASE_ANON_KEY" ]; then
+            ARGS+=(--dart-define=SUPABASE_URL="$SUPABASE_URL")
+            ARGS+=(--dart-define=SUPABASE_ANON_KEY="$SUPABASE_ANON_KEY")
+            echo "Building with Supabase."
+          else
+            echo "SUPABASE_URL / SUPABASE_ANON_KEY secrets not set: guest-only build."
+          fi
+          flutter build apk --debug "${ARGS[@]}"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: fittrack-pro-debug-apk
+          path: build/app/outputs/flutter-apk/app-debug.apk
+          retention-days: 14
+
+      - name: Build signed release bundle (only with keystore secrets)
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+          KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          if [ -z "$KEYSTORE_BASE64" ]; then
+            echo "ANDROID_KEYSTORE_BASE64 not set: skipping the release build."
+            exit 0
+          fi
+          if [ -z "$SUPABASE_URL" ] || [ -z "$SUPABASE_ANON_KEY" ]; then
+            echo "::error::A release build needs SUPABASE_URL and SUPABASE_ANON_KEY."
+            exit 1
+          fi
+          echo "$KEYSTORE_BASE64" | base64 --decode > android/app/upload-keystore.jks
+          cat > android/key.properties << PROPS
+          storeFile=upload-keystore.jks
+          storePassword=$KEYSTORE_PASSWORD
+          keyAlias=$KEY_ALIAS
+          keyPassword=$KEY_PASSWORD
+          PROPS
+          sed -i 's/^ *//' android/key.properties
+          flutter build appbundle --release \
+            --dart-define=SUPABASE_URL="$SUPABASE_URL" \
+            --dart-define=SUPABASE_ANON_KEY="$SUPABASE_ANON_KEY"
+          rm android/key.properties android/app/upload-keystore.jks
+
+      - name: Upload release bundle
+        if: hashFiles('build/app/outputs/bundle/release/app-release.aab') != ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: fittrack-pro-release-aab
+          path: build/app/outputs/bundle/release/app-release.aab
+          retention-days: 30
+
+  database:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: postgres
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd pg_isready --health-interval 5s
+          --health-timeout 5s --health-retries 10
+    env:
+      PGHOST: localhost
+      PGUSER: postgres
+      PGPASSWORD: postgres
+    steps:
+      - uses: actions/checkout@v4
+      - name: schema.sql twice + behaviour tests
+        run: supabase/tests/run.sh
+
+  functions:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.1.4
+      - name: Type-check delete-account
+        run: deno check supabase/functions/delete-account/index.ts
+
+  ios:
+    # macOS minutes cost 10x Linux, so only on manual runs with the box ticked.
+    if: github.event_name == 'workflow_dispatch' && inputs.build_ios
+    needs: android
+    runs-on: macos-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: true
+
+      - name: Generate platform folders
+        run: |
+          flutter create . --platforms=android,ios --org com.fittrack --project-name fittrack_pro
+          git clean -fd lib test
+          git checkout -- lib test pubspec.yaml analysis_options.yaml
+          mkdir -p assets/images
+
+      - name: iOS config (permission texts, sign-in URL scheme, Podfile)
+        run: python3 tool/patch_ios.py
+
+      - run: flutter pub get
+
+      - name: Build iOS (unsigned)
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+        run: |
+          ARGS=()
+          if [ -n "$SUPABASE_URL" ] && [ -n "$SUPABASE_ANON_KEY" ]; then
+            ARGS+=(--dart-define=SUPABASE_URL="$SUPABASE_URL")
+            ARGS+=(--dart-define=SUPABASE_ANON_KEY="$SUPABASE_ANON_KEY")
+          fi
+          flutter build ios --release --no-codesign "${ARGS[@]}"
